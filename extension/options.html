@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Note Taker settings</title>
+<style>
+  body { font: 14px system-ui, sans-serif; max-width: 480px; margin: 32px auto; padding: 0 16px; }
+  label { display: block; margin-top: 16px; font-weight: 600; }
+  input, button { box-sizing: border-box; width: 100%; padding: 8px; font: inherit; margin-top: 6px; }
+  button { cursor: pointer; width: auto; padding: 8px 14px; }
+  #msg { margin-top: 12px; color: #555; }
+</style>
+<h1>Note Taker settings</h1>
+<p>Create a token in the web app under <em>Extension setup</em>, then paste it here.</p>
+<label>Server URL <input id="serverUrl" placeholder="https://notes.example.com"></label>
+<label>API token <input id="token" type="password" placeholder="nt_…"></label>
+<p><button id="save">Save</button></p>
+<hr>
+<p>Chrome only lets extensions ask for the microphone from a visible page. Grant it once:</p>
+<button id="mic">Grant microphone</button>
+<div id="msg"></div>
+<script src="options.js"></script>

@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Note Taker",
+  "version": "0.1.0",
+  "description": "Records the current tab (Meet, Zoom web, ...) plus your mic and sends it to your Note Taker server for transcription and recap.",
+  "minimum_chrome_version": "116",
+  "permissions": ["tabCapture", "offscreen", "storage", "activeTab"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Note Taker" },
+  "options_page": "options.html"
+}

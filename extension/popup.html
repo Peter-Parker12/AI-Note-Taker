@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { font: 14px system-ui, sans-serif; width: 300px; padding: 12px; margin: 0; }
+  input, button { width: 100%; box-sizing: border-box; padding: 8px; font: inherit; margin-top: 8px; }
+  button { cursor: pointer; border: 0; border-radius: 6px; background: #111; color: #fff; }
+  button.stop { background: #dc2626; }
+  button:disabled { opacity: .5; }
+  #msg { margin-top: 8px; color: #555; min-height: 1.2em; }
+  #msg.err { color: #dc2626; }
+  a { color: inherit; }
+</style>
+<strong>Note Taker</strong>
+<div id="idle">
+  <input id="title" placeholder="Meeting title (optional)">
+  <button id="start">Record this tab</button>
+</div>
+<div id="active" hidden>
+  <div>● Recording <span id="elapsed"></span></div>
+  <button id="stop" class="stop">Stop &amp; generate recap</button>
+</div>
+<div id="msg"></div>
+<p><a href="options.html" target="_blank">Settings</a></p>
+<script src="popup.js"></script>

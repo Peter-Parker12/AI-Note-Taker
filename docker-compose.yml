@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notetaker
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-notetaker}
+      POSTGRES_DB: notetaker
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # Bound to localhost only: reachable for psql/backups from the VPS, never public.
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notetaker -d notetaker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-off: syncs the DB schema to prisma/schema.prisma, then exits.
+  # `db push` without --accept-data-loss: a destructive schema change fails
+  # loudly instead of silently dropping data.
+  migrate:
+    build:
+      context: ./web
+      target: generate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://notetaker:${DB_PASSWORD:-notetaker}@db:5432/notetaker
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npx prisma db push
+
+  app:
+    build:
+      context: ./web
+      target: runner
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://notetaker:${DB_PASSWORD:-notetaker}@db:5432/notetaker
+      PORT: "3010"
+      DATA_DIR: /data
+    # Host port 5930 -> container 3010. cloudflared reaches the app over the compose
+    # network (app:3010), so the tunnel does not depend on this mapping.
+    ports:
+      - "${HOST_PORT:-5930}:3010"
+    volumes:
+      - audio_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3010/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # Cloudflare Tunnel: outbound-only connection, so no open inbound ports and no
+  # TLS/reverse proxy to manage. Public hostname -> http://app:3010 is configured
+  # in the Cloudflare Zero Trust dashboard (see DEPLOYMENT.md).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  audio_data:

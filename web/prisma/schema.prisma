@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MeetingStatus {
+  RECORDING
+  UPLOADED
+  TRANSCRIBING
+  SUMMARIZING
+  READY
+  FAILED
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum JobType {
+  TRANSCRIBE
+  SUMMARIZE
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  image        String?
+  // Google refresh token (scope drive.file) used to export recaps to Docs.
+  googleRefreshToken String?
+  role         Role       @default(MEMBER)
+  disabled     Boolean    @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  tokens       ApiToken[]
+  meetings     Meeting[]
+}
+
+// Personal access tokens for the Chrome extension. Only the sha256 hash is stored.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Meeting {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  platform       String        @default("other")
+  status         MeetingStatus @default(RECORDING)
+  error          String?
+  audioPath      String?
+  chunkCount     Int           @default(0)
+  // Whether the recording is stereo (L = my mic, R = everyone else).
+  stereo         Boolean       @default(true)
+  durationSec    Int?
+  startedAt      DateTime      @default(now())
+  // [{ speaker, start, end, text }]
+  transcript     Json?
+  transcriptText String?
+  // { summary, decisions[], actionItems[{task, owner, due}], topics[] }
+  summary        Json?
+  docUrl         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  jobs           Job[]
+
+  @@index([userId, startedAt])
+}
+
+// DB-backed queue; a worker loop in instrumentation.ts claims PENDING jobs.
+model Job {
+  id        String    @id @default(cuid())
+  type      JobType
+  meetingId String
+  meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  status    JobStatus @default(PENDING)
+  attempts  Int       @default(0)
+  runAt     DateTime  @default(now())
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+// Emails allowed to sign in in addition to ALLOWED_EMAIL_DOMAINS / ALLOWED_EMAILS / ADMIN_EMAILS.
+model Invite {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  invitedBy String?
+  createdAt DateTime @default(now())
+}
