@@ -34,17 +34,18 @@ enum JobStatus {
 
 model User {
   id           String     @id @default(cuid())
-  email        String     @unique
+  username     String     @unique
+  passwordHash String
+  // Bumped on password change/reset so existing browser sessions stop working.
+  sessionVersion Int      @default(0)
   name         String?
-  image        String?
-  // Google refresh token (scope drive.file) used to export recaps to Docs.
-  googleRefreshToken String?
   role         Role       @default(MEMBER)
   disabled     Boolean    @default(false)
   lastLoginAt  DateTime?
   createdAt    DateTime   @default(now())
   tokens       ApiToken[]
   meetings     Meeting[]
+  settings     UserSettings?
 }
 
 // Personal access tokens for the Chrome extension. Only the sha256 hash is stored.
@@ -77,7 +78,6 @@ model Meeting {
   transcriptText String?
   // { summary, decisions[], actionItems[{task, owner, due}], topics[] }
   summary        Json?
-  docUrl         String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   jobs           Job[]
@@ -101,10 +101,19 @@ model Job {
   @@index([status, runAt])
 }
 
-// Emails allowed to sign in in addition to ALLOWED_EMAIL_DOMAINS / ALLOWED_EMAILS / ADMIN_EMAILS.
-model Invite {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  invitedBy String?
-  createdAt DateTime @default(now())
+
+// Per-account configuration. Null/absent fields fall back to the server's env defaults.
+// API keys are AES-256-GCM encrypted (lib/crypto.ts).
+model UserSettings {
+  userId          String   @id
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aiInstructions  String?
+  recapLanguage   String   @default("auto") // auto | vi | en
+  sttProvider     String?                   // openai | deepgram
+  sttLanguage     String?                   // auto | vi | en ...
+  claudeModel     String?
+  anthropicKeyEnc String?
+  openaiKeyEnc    String?
+  deepgramKeyEnc  String?
+  updatedAt       DateTime @updatedAt
 }

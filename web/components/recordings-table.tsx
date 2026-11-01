@@ -5,7 +5,7 @@ import { useState } from "react";
 
 export type Row = {
   id: string; title: string; platform: string; status: string; statusLabel: string;
-  startedAt: string; durationSec: number | null; sizeBytes: number; hasAudio: boolean; docUrl: string | null;
+  startedAt: string; durationSec: number | null; sizeBytes: number; hasAudio: boolean;
 };
 
 const mb = (b: number) => (b ? (b / 1024 / 1024).toFixed(1) + " MB" : "—");
@@ -66,7 +66,6 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
                   {r.hasAudio && <a className="hover:underline" href={`/api/meetings/${r.id}/audio?dl=1`}>audio</a>}
                   <a className="hover:underline" href={`/api/meetings/${r.id}/download?format=md`}>recap</a>
                   <a className="hover:underline" href={`/api/meetings/${r.id}/download?format=txt`}>transcript</a>
-                  {r.docUrl && <a className="hover:underline" href={r.docUrl} target="_blank" rel="noreferrer">doc</a>}
                 </td>
               </tr>
             ))}

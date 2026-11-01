@@ -20,12 +20,12 @@ export default async function Recordings({ searchParams }: { searchParams: Promi
 
   const meetings = await prisma.meeting.findMany({
     where, orderBy: { startedAt: "desc" }, take: 200,
-    select: { id: true, title: true, platform: true, status: true, startedAt: true, durationSec: true, audioPath: true, docUrl: true },
+    select: { id: true, title: true, platform: true, status: true, startedAt: true, durationSec: true, audioPath: true },
   });
   const rows: Row[] = await Promise.all(meetings.map(async (m) => ({
     id: m.id, title: m.title, platform: m.platform, status: m.status, statusLabel: STATUS_LABEL[m.status],
     startedAt: m.startedAt.toISOString(), durationSec: m.durationSec, sizeBytes: await audioSize(m.audioPath),
-    hasAudio: !!m.audioPath, docUrl: m.docUrl,
+    hasAudio: !!m.audioPath,
   })));
   const totalBytes = rows.reduce((n, r) => n + r.sizeBytes, 0);
 

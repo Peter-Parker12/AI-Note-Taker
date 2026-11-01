@@ -17,7 +17,7 @@ async function main() {
   for (const name of providers) {
     const t0 = Date.now();
     try {
-      const segs = await getStt(name).transcribe(first);
+      const segs = await getStt(name).transcribe(first, { language: process.env.STT_LANGUAGE ?? "auto" });
       const out = path.join(process.cwd(), `bench-${name}.txt`);
       await fs.writeFile(out, segs.map((s) => `[${s.start.toFixed(1)}] ${s.speaker ?? ""} ${s.text}`).join("\n"));
       console.log(`${name}: ${segs.length} segments in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${out}`);

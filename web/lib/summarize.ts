@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CLAUDE_MODEL } from "@/lib/env";
+import type { ResolvedSettings } from "@/lib/settings";
 
 export type MeetingSummary = {
   title: string;
@@ -9,20 +9,39 @@ export type MeetingSummary = {
   topics: string[];
 };
 
-const client = () => new Anthropic(); // reads ANTHROPIC_API_KEY
+/** Per-account key when set, otherwise the SDK reads ANTHROPIC_API_KEY. */
+export const claudeClient = (cfg: Pick<ResolvedSettings, "anthropicKey">) => new Anthropic({ apiKey: cfg.anthropicKey });
 
 const SYSTEM = `You write meeting recaps from automatic transcripts.
 The transcript may mix Vietnamese and English and contain recognition errors; infer intended words from context.
 Speaker labels: "Me" is the recording user (their microphone); "Others" are remote participants (possibly several people merged), or "Others N" when separated.
-Write the recap in the dominant language of the meeting (Vietnamese if mixed). Keep English technical terms and names as spoken.
+Keep English technical terms and names as spoken.
 Only include action items that were actually committed to or requested; never invent owners or dates — use null when not stated.
 Be concise and factual.`;
 
-export async function summarizeTranscript(input: { title: string; startedAt: Date; transcript: string }): Promise<MeetingSummary> {
-  const res = await client().messages.create({
-    model: CLAUDE_MODEL,
+const LANGUAGE_RULE = {
+  auto: "Write the recap in the dominant language of the meeting (Vietnamese if mixed).",
+  vi: "Write the recap in Vietnamese.",
+  en: "Write the recap in English.",
+};
+
+export function recapSystemPrompt(cfg: Pick<ResolvedSettings, "recapLanguage" | "aiInstructions">) {
+  return [
+    SYSTEM,
+    LANGUAGE_RULE[cfg.recapLanguage],
+    cfg.aiInstructions.trim() &&
+      `The user's own standing instructions for their recaps (follow them unless they conflict with the rules above):\n<instructions>\n${cfg.aiInstructions.trim()}\n</instructions>`,
+  ].filter(Boolean).join("\n");
+}
+
+export async function summarizeTranscript(
+  input: { title: string; startedAt: Date; transcript: string },
+  cfg: ResolvedSettings,
+): Promise<MeetingSummary> {
+  const res = await claudeClient(cfg).messages.create({
+    model: cfg.claudeModel,
     max_tokens: 4096,
-    system: SYSTEM,
+    system: recapSystemPrompt(cfg),
     tools: [{
       name: "save_recap",
       description: "Save the structured meeting recap.",

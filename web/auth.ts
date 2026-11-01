@@ -1,72 +1,42 @@
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
-
-const list = (v?: string) => (v ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-
-export const adminEmails = () => list(process.env.ADMIN_EMAILS);
-
-async function isAllowed(email: string) {
-  const e = email.toLowerCase();
-  if (adminEmails().includes(e)) return true;
-  if (list(process.env.ALLOWED_EMAILS).includes(e)) return true;
-  if (list(process.env.ALLOWED_EMAIL_DOMAINS).includes(e.split("@")[1])) return true;
-  return !!(await prisma.invite.findUnique({ where: { email: e } })); // fail closed otherwise
-}
+import { burnComparison, verifyPassword } from "@/lib/password";
+import { clearFailures, isLocked, recordFailure } from "@/lib/login-throttle";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
   providers: [
-    Google({
-      authorization: {
-        params: {
-          // drive.file: only files this app creates (recap docs).
-          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
-          access_type: "offline",
-          prompt: "consent",
-        },
+    Credentials({
+      credentials: { username: {}, password: {} },
+      async authorize(credentials) {
+        const username = String(credentials?.username ?? "").trim().toLowerCase();
+        const password = String(credentials?.password ?? "");
+        if (!username || !password || isLocked(username)) return null;
+
+        const user = await prisma.user.findUnique({ where: { username } });
+        const ok = user && !user.disabled ? await verifyPassword(password, user.passwordHash) : (await burnComparison(password), false);
+        if (!ok || !user) { recordFailure(username); return null; }
+
+        clearFailures(username);
+        await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+        return { id: user.id, name: user.name ?? user.username, sv: user.sessionVersion };
       },
     }),
   ],
   callbacks: {
-    async signIn({ profile }) {
-      if (!profile?.email || profile.email_verified === false) return false;
-      if (!(await isAllowed(profile.email))) return false;
-      const existing = await prisma.user.findUnique({ where: { email: profile.email.toLowerCase() } });
-      return !existing?.disabled;
-    },
-    async jwt({ token, account, profile }) {
-      if (account && profile?.email) {
-        const email = profile.email.toLowerCase();
-        // First account ever, or anyone in ADMIN_EMAILS, is an admin.
-        const isFirst = (await prisma.user.count()) === 0;
-        const makeAdmin = isFirst || adminEmails().includes(email);
-        const user = await prisma.user.upsert({
-          where: { email },
-          create: {
-            email,
-            name: profile.name ?? null,
-            image: (profile.picture as string | undefined) ?? null,
-            googleRefreshToken: account.refresh_token ?? null,
-            role: makeAdmin ? "ADMIN" : "MEMBER",
-            lastLoginAt: new Date(),
-          },
-          update: {
-            name: profile.name ?? undefined,
-            image: (profile.picture as string | undefined) ?? undefined,
-            lastLoginAt: new Date(),
-            ...(makeAdmin ? { role: "ADMIN" as const } : {}),
-            ...(account.refresh_token ? { googleRefreshToken: account.refresh_token } : {}),
-          },
-        });
+    async jwt({ token, user }) {
+      if (user) { // only present at sign-in
         token.uid = user.id;
+        token.sv = (user as { sv?: number }).sv ?? 0;
       }
       return token;
     },
     async session({ session, token }) {
       if (token.uid) session.user.id = token.uid as string;
+      session.user.sv = (token.sv as number | undefined) ?? 0;
       return session;
     },
   },

@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getRequestUser, unauthorized } from "@/lib/api-auth";
-import { CLAUDE_MODEL } from "@/lib/env";
+import { getUserSettings } from "@/lib/settings";
+import { claudeClient } from "@/lib/summarize";
 import { searchMeetings } from "@/lib/meetings";
 
 export const dynamic = "force-dynamic";
@@ -39,8 +39,9 @@ export async function POST(req: Request) {
     if (!context) context = "(no meetings matched the question)";
   }
 
-  const res = await new Anthropic().messages.create({
-    model: CLAUDE_MODEL,
+  const cfg = await getUserSettings(user.id);
+  const res = await claudeClient(cfg).messages.create({
+    model: cfg.claudeModel,
     max_tokens: 2048,
     system:
       "You answer questions about the user's recorded meetings using only the meeting material provided. " +

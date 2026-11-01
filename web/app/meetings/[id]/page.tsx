@@ -38,7 +38,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           </p>
         </section>
       )}
-      <MeetingActions id={m.id} status={m.status} docUrl={m.docUrl} hasSummary={!!summary} />
+      <MeetingActions id={m.id} status={m.status} />
 
       {summary ? (
         <>

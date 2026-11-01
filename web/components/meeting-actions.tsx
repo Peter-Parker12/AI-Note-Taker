@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export function MeetingActions({ id, status, docUrl, hasSummary }: { id: string; status: string; docUrl: string | null; hasSummary: boolean }) {
+export function MeetingActions({ id, status }: { id: string; status: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -22,17 +22,11 @@ export function MeetingActions({ id, status, docUrl, hasSummary }: { id: string;
     setBusy("");
     if (!res.ok) return setError(json.error ?? "Request failed");
     if (label === "delete") return router.push("/");
-    if (json.docUrl) window.open(json.docUrl, "_blank");
     router.refresh();
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {hasSummary && (docUrl
-        ? <a className="btn" href={docUrl} target="_blank" rel="noreferrer">Open Google Doc</a>
-        : <button className="btn" disabled={!!busy} onClick={() => call("export", `/api/meetings/${id}/export`)}>
-            {busy === "export" ? "Exporting…" : "Export to Google Docs"}
-          </button>)}
       {(status === "FAILED" || status === "READY") && (
         <button className="btn" disabled={!!busy} onClick={() => call("retry", `/api/meetings/${id}/retry`)}>Regenerate recap</button>
       )}

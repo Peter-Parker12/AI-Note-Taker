@@ -1,13 +1,12 @@
 import fs from "fs/promises";
-import { STT_LANGUAGE } from "@/lib/env";
 import type { SttProvider } from "./types";
 
 // Diarizes within a file, so the "others" channel can be split into Speaker 1..n.
 export const deepgramStt: SttProvider = {
   name: "deepgram",
-  async transcribe(file) {
-    const key = process.env.DEEPGRAM_API_KEY;
-    if (!key) throw new Error("DEEPGRAM_API_KEY is not set");
+  async transcribe(file, { apiKey, language }) {
+    const key = apiKey ?? process.env.DEEPGRAM_API_KEY;
+    if (!key) throw new Error("No Deepgram API key: add yours in Account settings or set DEEPGRAM_API_KEY on the server");
     const params = new URLSearchParams({
       model: process.env.DEEPGRAM_MODEL ?? "nova-3",
       smart_format: "true",
@@ -15,8 +14,8 @@ export const deepgramStt: SttProvider = {
       utterances: "true",
       diarize: "true",
     });
-    if (STT_LANGUAGE === "auto") params.set("detect_language", "true");
-    else params.set("language", STT_LANGUAGE);
+    if (language === "auto") params.set("detect_language", "true");
+    else params.set("language", language);
     const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
       method: "POST",
       headers: { Authorization: `Token ${key}`, "Content-Type": "audio/mpeg" },

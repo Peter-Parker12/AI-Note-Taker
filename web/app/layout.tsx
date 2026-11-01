@@ -23,7 +23,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </nav>
             {user && (
               <div className="flex items-center gap-3 text-sm">
-                <span className="muted hidden sm:inline">{user.email}</span>
+                <span className="muted hidden sm:inline">{user.name ?? user.username}</span>
                 <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
                   <button className="btn">Sign out</button>
                 </form>

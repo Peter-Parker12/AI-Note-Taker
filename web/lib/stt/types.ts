@@ -13,8 +13,15 @@ export type RawSegment = {
   speaker?: string;
 };
 
+export type SttOptions = {
+  /** Per-account key; falls back to the server's env key when absent. */
+  apiKey?: string;
+  /** "auto" lets the provider detect the language. */
+  language: string;
+};
+
 export interface SttProvider {
   name: string;
   /** Transcribes ONE short mono audio file. */
-  transcribe(file: string): Promise<RawSegment[]>;
+  transcribe(file: string, opts: SttOptions): Promise<RawSegment[]>;
 }

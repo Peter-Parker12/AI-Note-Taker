@@ -1,8 +1,8 @@
 # AI Note Taker
 
-Chrome extension + web app that records meetings (Google Meet, Zoom web, any tab), transcribes them, and produces a recap with action items, a searchable archive with chat, and Google Docs export.
+Chrome extension + web app that records meetings (Google Meet, Zoom web, any tab), transcribes them, and produces a recap with action items, a searchable archive with chat. Recaps and transcripts download as Markdown/text.
 
-- `web/` — Next.js 16 app + API + job worker (Prisma/Postgres, Auth.js Google SSO, Claude for recaps/chat)
+- `web/` — Next.js 16 app + API + job worker (Prisma/Postgres, username/password auth, Claude for recaps/chat)
 - `extension/` — Chrome MV3 extension (load unpacked). Records tab audio (right channel) + mic (left channel) so "Me" vs "Others" needs no diarization.
 - `DEPLOYMENT.md` — VPS + Docker deployment
 
