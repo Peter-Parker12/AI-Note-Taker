@@ -41,8 +41,8 @@ services:
       DATABASE_URL: postgresql://notetaker:${DB_PASSWORD:-notetaker}@db:5432/notetaker
       PORT: "3010"
       DATA_DIR: /data
-    # Host port 5930 -> container 3010. cloudflared reaches the app over the compose
-    # network (app:3010), so the tunnel does not depend on this mapping.
+    # Host port 5930 -> container 3010. Point your existing Cloudflare Tunnel at
+    # http://localhost:5930 (see DEPLOYMENT.md).
     ports:
       - "${HOST_PORT:-5930}:3010"
     volumes:
@@ -58,19 +58,6 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
-
-  # Cloudflare Tunnel: outbound-only connection, so no open inbound ports and no
-  # TLS/reverse proxy to manage. Public hostname -> http://app:3010 is configured
-  # in the Cloudflare Zero Trust dashboard (see DEPLOYMENT.md).
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
-    depends_on:
-      app:
-        condition: service_healthy
 
 volumes:
   db_data:

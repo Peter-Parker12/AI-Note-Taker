@@ -1,6 +1,6 @@
 # Deployment (VPS + Docker)
 
-Same shape as the other Erasight projects: multi-stage `web/Dockerfile` (Next standalone) and one `docker-compose.yml` with `db` (Postgres 16), a one-off `migrate` (`prisma db push`) and `app`. The app container also runs the job worker (transcribe → summarize), so there is no extra service. Audio lives in the `audio_data` volume.
+Same shape as the other Erasight projects: multi-stage `web/Dockerfile` (Next standalone) and one `docker-compose.yml` with `db` (Postgres 16), a one-off `migrate` (`prisma db push`) and `app`. It is exposed through the Cloudflare Tunnel already running on the VPS. The app container also runs the job worker (transcribe → summarize), so there is no extra service. Audio lives in the `audio_data` volume.
 
 ## 1. Configure
 ```bash
@@ -22,17 +22,13 @@ docker compose up -d --build
 docker compose logs -f app      # expect "[worker] started"
 curl http://<vps-ip>:5930/api/health
 ```
-The app is published on host port **5930** (`HOST_PORT`); the DB binds to `127.0.0.1` only. If you only want access through the tunnel, block 5930 in the VPS firewall (e.g. `ufw deny 5930`) or change the mapping to `127.0.0.1:5930:3010`.
+The app is published on host port **5930** (`HOST_PORT`); the DB binds to `127.0.0.1` only. If you only want access through your tunnel, block 5930 in the VPS firewall (e.g. `ufw deny 5930`) or change the mapping to `127.0.0.1:5930:3010`.
 
-## 3. Cloudflare Tunnel
-No inbound ports, TLS or reverse proxy needed; `cloudflared` (in compose) dials out to Cloudflare.
-1. Zero Trust dashboard → Networks → Tunnels → **Create a tunnel** → Cloudflared → copy the **token** into `CLOUDFLARE_TUNNEL_TOKEN` in `.env`.
-2. Add a **public hostname**: `notes.example.com` → service type **HTTP**, URL `app:3010` (the compose service name).
-3. Set `AUTH_URL=https://notes.example.com` in `.env`.
-4. `docker compose up -d` — the tunnel shows *Healthy* in the dashboard.
+## 3. Cloudflare Tunnel (already installed on the VPS)
+The tunnel isn't part of this compose file. In the Zero Trust dashboard (Networks → Tunnels → your tunnel → Public hostnames), add a hostname such as `notes.example.com` → service **HTTP**, URL `localhost:5930`. If `cloudflared` runs in Docker rather than directly on the host, `localhost` is the container itself; use the VPS's Docker host address (e.g. `host.docker.internal:5930` with `extra_hosts: host-gateway`, or the VPS IP) instead. Then set `AUTH_URL=https://notes.example.com` in `.env`.
 
 Limits to know: Cloudflare caps request bodies at 100 MB on Free/Pro. The extension uploads 10-second chunks, so recordings of any length are fine, but the web **Upload recording** form is limited to files under 100 MB.
-Optional hardening: put a Cloudflare Access policy on the hostname for your domain's emails, but exclude `/api/*` or the extension's Bearer-token requests will be blocked (or use Access service tokens). Username/password login + API tokens already protect the app without it.
+Optional hardening: put a Cloudflare Access policy on the hostname, but exclude `/api/*` or the extension's Bearer-token requests will be blocked (or use Access service tokens). Username/password login + API tokens already protect the app without it.
 
 ## 4. Install the extension
 `chrome://extensions` → Developer mode → **Load unpacked** → select `extension/`. Sign in to the web app → *Extension setup* → create a token → paste server URL + token in the extension options, then click **Grant microphone** once.
