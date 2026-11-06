@@ -13,6 +13,11 @@ async function render() {
     const tick = () => { const s = Math.floor((Date.now() - state.startedAt) / 1000); $("elapsed").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
     tick(); timer = setInterval(tick, 1000);
   } else if (state.error) msg(state.error, true);
+  else if (state.lastMeetingId) {
+    const { serverUrl } = await chrome.storage.local.get("serverUrl");
+    $("msg").className = "";
+    $("msg").innerHTML = `Last recording uploaded. <a target="_blank" href="${serverUrl.replace(/\/+$/, "")}/meetings/${state.lastMeetingId}">Open the recap</a>`;
+  }
 }
 
 $("start").onclick = async () => {

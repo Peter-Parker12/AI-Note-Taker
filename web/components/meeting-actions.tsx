@@ -27,6 +27,13 @@ export function MeetingActions({ id, status }: { id: string; status: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {status === "RECORDING" && (
+        <button className="btn" disabled={!!busy} onClick={() =>
+          confirm("Stop this recording and generate the recap from the audio received so far?\n\nUse this if the recording was interrupted (for example the tab was closed). If the meeting is still being recorded, the extension will stop.")
+          && call("finalize", `/api/meetings/${id}/finalize`)}>
+          {busy === "finalize" ? "Processing…" : "Stop & process now"}
+        </button>
+      )}
       {(status === "FAILED" || status === "READY") && (
         <button className="btn" disabled={!!busy} onClick={() => call("retry", `/api/meetings/${id}/retry`)}>Regenerate recap</button>
       )}

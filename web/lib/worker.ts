@@ -45,13 +45,36 @@ async function tick() {
   return true;
 }
 
+const STALE_MS = 10 * 60_000; // chunks arrive every ~10s, so 10 minutes of silence means the recorder is gone
+const SWEEP_EVERY_MS = 60_000;
+
+/**
+ * Recordings the extension never finalized (tab closed with the service worker asleep, browser quit,
+ * network lost for good). With audio: process what arrived. Without: fail with a clear message.
+ */
+async function sweepStaleRecordings() {
+  const stale = await prisma.meeting.findMany({
+    where: { status: "RECORDING", updatedAt: { lt: new Date(Date.now() - STALE_MS) } },
+    select: { id: true, audioPath: true },
+  });
+  for (const m of stale) {
+    const next = m.audioPath ? ({ status: "UPLOADED" } as const) : ({ status: "FAILED", error: "No audio was received for this recording." } as const);
+    // Claim it atomically so a concurrent /finalize call can't enqueue a second job.
+    const { count } = await prisma.meeting.updateMany({ where: { id: m.id, status: "RECORDING" }, data: next });
+    if (count && m.audioPath) await prisma.job.create({ data: { type: "TRANSCRIBE", meetingId: m.id } });
+    if (count) console.log(`[worker] finalized abandoned recording ${m.id} (${m.audioPath ? "processing" : "no audio"})`);
+  }
+}
+
 export function startWorker() {
   if (started) return;
   started = true;
   // Jobs left RUNNING by a crashed/restarted container go back in the queue.
   prisma.job.updateMany({ where: { status: "RUNNING" }, data: { status: "PENDING" } }).catch(() => {});
+  let lastSweep = 0;
   const loop = async () => {
     try {
+      if (Date.now() - lastSweep > SWEEP_EVERY_MS) { lastSweep = Date.now(); await sweepStaleRecordings(); }
       while (await tick()) { /* drain */ }
     } catch (e) {
       console.error("[worker] tick error", e);

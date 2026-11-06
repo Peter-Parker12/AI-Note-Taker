@@ -3,7 +3,7 @@
 // so "Me" vs "Others" attribution needs no diarization.
 
 const TIMESLICE_MS = 10_000;
-let recorder, ctx, streams = [], uploader;
+let recorder, ctx, streams = [], uploader, meta = null;
 
 function makeUploader({ serverUrl, token, meetingId }) {
   let index = 0;
@@ -59,6 +59,10 @@ async function start({ streamId, serverUrl, token, meetingId }) {
     video: false,
   });
   streams = [tabStream, micStream];
+  meta = { meetingId, startedAt: Date.now() };
+  // The recorded tab was closed (or navigated away from capture): finish and upload on our own,
+  // because the service worker may have been shut down and can't be relied on to do it.
+  tabStream.getAudioTracks()[0]?.addEventListener("ended", autoFinish);
 
   ctx = new AudioContext();
   const merger = ctx.createChannelMerger(2);
@@ -83,6 +87,16 @@ async function start({ streamId, serverUrl, token, meetingId }) {
   recorder.start(TIMESLICE_MS);
 }
 
+async function autoFinish() {
+  const meetingId = meta?.meetingId;
+  try {
+    await stop();
+    chrome.runtime.sendMessage({ target: "background", type: "recorder-finished", meetingId });
+  } catch (e) {
+    chrome.runtime.sendMessage({ target: "background", type: "recorder-error", error: `Upload failed: ${e.message}` });
+  }
+}
+
 async function stop() {
   if (!recorder) return;
   const r = recorder, u = uploader;
@@ -92,12 +106,14 @@ async function stop() {
   await ctx.close();
   streams = []; ctx = null;
   await u.finish();
+  meta = null;
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.target !== "offscreen") return;
   (async () => {
     try {
+      if (msg.type === "status") return sendResponse({ ok: true, recording: !!recorder, ...meta });
       if (msg.type === "start") await start(msg);
       if (msg.type === "stop") await stop();
       sendResponse({ ok: true });
