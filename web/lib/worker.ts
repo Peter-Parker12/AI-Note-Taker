@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { runSummarize, runTranscribe } from "@/lib/pipeline";
 
 const POLL_MS = 3000;
-const MAX_ATTEMPTS = 3;
 let started = false;
 
 async function claim() {
@@ -19,6 +18,14 @@ async function claim() {
   return count ? job : null;
 }
 
+// A failed job stops for good: no automatic retries. The meeting shows the error, and the user
+// fixes the cause (key, credits, model, Whisper down) and clicks Re-transcribe / Regenerate.
+async function failJob(job: { id: string; type: string; meetingId: string }, msg: string) {
+  await prisma.job.update({ where: { id: job.id }, data: { status: "FAILED", lastError: msg } });
+  // updateMany: the meeting may have been deleted while the job ran.
+  await prisma.meeting.updateMany({ where: { id: job.meetingId }, data: { status: "FAILED", error: msg, failedStage: job.type, progress: null } });
+}
+
 async function tick() {
   const job = await claim();
   if (!job) return false;
@@ -28,18 +35,12 @@ async function tick() {
     await prisma.job.update({ where: { id: job.id }, data: { status: "DONE", lastError: null } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[worker] ${job.type} ${job.meetingId} failed:`, msg);
-    const final = job.attempts + 1 >= MAX_ATTEMPTS;
-    await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        status: final ? "FAILED" : "PENDING",
-        lastError: msg,
-        runAt: new Date(Date.now() + 30_000 * (job.attempts + 1)),
-      },
-    });
-    if (final) {
-      await prisma.meeting.update({ where: { id: job.meetingId }, data: { status: "FAILED", error: msg } });
+    try {
+      await failJob(job, msg);
+      console.error(`[worker] ${job.type} ${job.meetingId} failed (stopped):`, msg);
+    } catch (e2) {
+      // Even recording the failure failed (e.g. DB hiccup); never let that take the worker down.
+      console.error(`[worker] ${job.type} ${job.meetingId} failed and could not be recorded:`, msg, e2);
     }
   }
   return true;
@@ -58,7 +59,7 @@ async function sweepStaleRecordings() {
     select: { id: true, audioPath: true },
   });
   for (const m of stale) {
-    const next = m.audioPath ? ({ status: "UPLOADED" } as const) : ({ status: "FAILED", error: "No audio was received for this recording." } as const);
+    const next = m.audioPath ? ({ status: "UPLOADED" } as const) : ({ status: "FAILED", failedStage: "TRANSCRIBE", error: "No audio was received for this recording." } as const);
     // Claim it atomically so a concurrent /finalize call can't enqueue a second job.
     const { count } = await prisma.meeting.updateMany({ where: { id: m.id, status: "RECORDING" }, data: next });
     if (count && m.audioPath) await prisma.job.create({ data: { type: "TRANSCRIBE", meetingId: m.id } });

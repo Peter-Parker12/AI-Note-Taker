@@ -1,15 +1,26 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { availableActions, failedStageOf, type MeetingAction } from "@/lib/format";
+import { JobProgress } from "@/components/job-progress";
+import { DownloadMenu } from "@/components/download-menu";
 
 export type Row = {
   id: string; title: string; platform: string; status: string; statusLabel: string;
+  failedStage: string | null; progress: number | null; hasTranscript: boolean; hasSummary: boolean;
   startedAt: string; durationSec: number | null; sizeBytes: number; hasAudio: boolean;
 };
 
 const mb = (b: number) => (b ? (b / 1024 / 1024).toFixed(1) + " MB" : "—");
 const dur = (s: number | null) => (s ? `${Math.floor(s / 60)}m` : "—");
+
+const ACTION_LABEL: Record<MeetingAction, string> = { finalize: "stop & process", retranscribe: "re-transcribe", rerecap: "re-recap" };
+const ACTION_URL: Record<MeetingAction, (id: string) => string> = {
+  finalize: (id) => `/api/meetings/${id}/finalize`,
+  retranscribe: (id) => `/api/meetings/${id}/retry?stage=transcribe`,
+  rerecap: (id) => `/api/meetings/${id}/retry?stage=recap`,
+};
 
 export function RecordingsTable({ rows }: { rows: Row[] }) {
   const router = useRouter();
@@ -17,6 +28,15 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const allSelected = rows.length > 0 && selected.size === rows.length;
+  const actionsOf = (r: Row) => availableActions({ status: r.status, failedStage: r.failedStage, hasTranscript: r.hasTranscript, hasAudio: r.hasAudio });
+  const inFlight = rows.some((r) => ["UPLOADED", "TRANSCRIBING", "SUMMARIZING"].includes(r.status));
+
+  // Keep progress bars and statuses fresh while anything is processing.
+  useEffect(() => {
+    if (!inFlight) return;
+    const t = setInterval(() => router.refresh(), 3000);
+    return () => clearInterval(t);
+  }, [inFlight, router]);
 
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -31,16 +51,15 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
     setSelected(new Set()); router.refresh();
   }
 
-  const canRetranscribe = (r: Row) => r.hasAudio && (r.status === "READY" || r.status === "FAILED");
-
-  // Queues a from-scratch transcription (then recap) for each id, one at a time.
-  async function retranscribe(ids: string[]) {
-    if (!ids.length) return setError("Nothing to re-transcribe: recordings need audio and a Ready or Failed status.");
-    if (!confirm(`Transcribe ${ids.length} recording(s) again from scratch? This replaces their transcripts and recaps.`)) return;
+  // Queues one action for each id, one at a time (the worker also processes one job at a time).
+  async function run(action: MeetingAction, ids: string[]) {
+    if (!ids.length) return setError(`Nothing to ${ACTION_LABEL[action]} in the selection.`);
+    const warn = action === "retranscribe" ? "This replaces their transcripts and recaps." : action === "rerecap" ? "This replaces their recaps." : "";
+    if (!confirm(`${ACTION_LABEL[action][0].toUpperCase() + ACTION_LABEL[action].slice(1)} for ${ids.length} recording(s)? ${warn}`.trim())) return;
     setBusy(true); setError("");
     let failed = 0;
     for (const id of ids) {
-      const res = await fetch(`/api/meetings/${id}/retry?full=1`, { method: "POST" }).catch(() => null);
+      const res = await fetch(ACTION_URL[action](id), { method: "POST" }).catch(() => null);
       if (!res?.ok) failed++;
     }
     setBusy(false);
@@ -48,16 +67,22 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
     else setSelected(new Set());
     router.refresh();
   }
+  const selectedWith = (a: MeetingAction) => rows.filter((r) => selected.has(r.id) && actionsOf(r).includes(a)).map((r) => r.id);
 
   if (!rows.length) return <p className="muted">No recordings match.</p>;
   return (
     <div className="space-y-2">
-      <div className="flex h-9 items-center gap-3">
+      <div className="flex min-h-9 flex-wrap items-center gap-3">
         {selected.size > 0 && (
           <>
             <span className="text-sm">{selected.size} selected</span>
-            <button className="btn" disabled={busy} onClick={() => retranscribe(rows.filter((r) => selected.has(r.id) && canRetranscribe(r)).map((r) => r.id))}>Re-transcribe selected</button>
-            <button className="btn" disabled={busy} onClick={bulkDelete}>{busy ? "Deleting…" : "Delete selected"}</button>
+            {selectedWith("retranscribe").length > 0 && (
+              <button className="btn" disabled={busy} onClick={() => run("retranscribe", selectedWith("retranscribe"))}>Re-transcribe ({selectedWith("retranscribe").length})</button>
+            )}
+            {selectedWith("rerecap").length > 0 && (
+              <button className="btn" disabled={busy} onClick={() => run("rerecap", selectedWith("rerecap"))}>Re-recap ({selectedWith("rerecap").length})</button>
+            )}
+            <button className="btn" disabled={busy} onClick={bulkDelete}>{busy ? "Working…" : "Delete selected"}</button>
           </>
         )}
         {error && <span className="text-sm text-red-600">{error}</span>}
@@ -72,25 +97,32 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="py-2"><input type="checkbox" aria-label={`Select ${r.title}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} /></td>
-                <td className="max-w-xs truncate pr-3 font-medium"><Link href={`/meetings/${r.id}`} className="hover:underline">{r.title}</Link></td>
-                <td className="whitespace-nowrap pr-3">{new Date(r.startedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td>
-                <td className="pr-3">{r.platform}</td>
-                <td className="pr-3">{dur(r.durationSec)}</td>
-                <td className="pr-3">{mb(r.sizeBytes)}</td>
-                <td className={`pr-3 ${r.status === "FAILED" ? "text-red-600" : r.status === "READY" ? "text-green-600" : "text-amber-600"}`}>{r.statusLabel}</td>
-                <td className="space-x-2 whitespace-nowrap text-right">
-                  {canRetranscribe(r) && (
-                    <button className="hover:underline disabled:opacity-50" disabled={busy} onClick={() => retranscribe([r.id])}>re-transcribe</button>
-                  )}
-                  {r.hasAudio && <a className="hover:underline" href={`/api/meetings/${r.id}/audio?dl=1`}>audio</a>}
-                  <a className="hover:underline" href={`/api/meetings/${r.id}/download?format=md`}>recap</a>
-                  <a className="hover:underline" href={`/api/meetings/${r.id}/download?format=txt`}>transcript</a>
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const failed = r.status === "FAILED";
+              return (
+                <tr key={r.id}>
+                  <td className="py-2"><input type="checkbox" aria-label={`Select ${r.title}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} /></td>
+                  <td className="max-w-xs truncate pr-3 font-medium"><Link href={`/meetings/${r.id}`} className="hover:underline">{r.title}</Link></td>
+                  <td className="whitespace-nowrap pr-3">{new Date(r.startedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td>
+                  <td className="pr-3">{r.platform}</td>
+                  <td className="pr-3">{dur(r.durationSec)}</td>
+                  <td className="pr-3">{mb(r.sizeBytes)}</td>
+                  <td className={`py-2 pr-3 ${failed ? "text-red-600" : r.status === "READY" ? "text-green-600" : "text-amber-600"}`}>
+                    {["UPLOADED", "TRANSCRIBING", "SUMMARIZING"].includes(r.status)
+                      ? <JobProgress status={r.status} progress={r.progress} compact />
+                      : <span title={failed ? (failedStageOf({ status: r.status, failedStage: r.failedStage, hasTranscript: r.hasTranscript }) ?? "") : undefined}>{r.statusLabel}</span>}
+                  </td>
+                  <td className="whitespace-nowrap text-right">
+                    <span className="inline-flex items-center gap-3">
+                      {actionsOf(r).map((a) => (
+                        <button key={a} className="hover:underline disabled:opacity-50" disabled={busy} onClick={() => run(a, [r.id])}>{ACTION_LABEL[a]}</button>
+                      ))}
+                      <DownloadMenu icon="dots" id={r.id} hasAudio={r.hasAudio} hasTranscript={r.hasTranscript} hasSummary={r.hasSummary} />
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -67,6 +67,10 @@ model Meeting {
   platform       String        @default("other")
   status         MeetingStatus @default(RECORDING)
   error          String?
+  // Which stage failed ("TRANSCRIBE" | "SUMMARIZE"); null unless status is FAILED.
+  failedStage    String?
+  // 0-100 while transcribing; null when there is nothing to measure (queued, recapping, idle).
+  progress       Int?
   audioPath      String?
   chunkCount     Int           @default(0)
   // Whether the recording is stereo (L = my mic, R = everyone else).

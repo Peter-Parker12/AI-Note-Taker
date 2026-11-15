@@ -1,17 +1,26 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { availableActions } from "@/lib/format";
+import { DownloadMenu } from "@/components/download-menu";
+import { JobProgress } from "@/components/job-progress";
 
-export function MeetingActions({ id, status }: { id: string; status: string }) {
+type Props = {
+  id: string; status: string; failedStage: string | null; progress: number | null;
+  hasAudio: boolean; hasTranscript: boolean; hasSummary: boolean;
+};
+
+export function MeetingActions({ id, status, failedStage, progress, hasAudio, hasTranscript, hasSummary }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const inFlight = ["RECORDING", "UPLOADED", "TRANSCRIBING", "SUMMARIZING"].includes(status);
+  const actions = availableActions({ status, failedStage, hasAudio, hasTranscript });
 
   // Poll while the pipeline is running.
   useEffect(() => {
     if (!inFlight) return;
-    const t = setInterval(() => router.refresh(), 4000);
+    const t = setInterval(() => router.refresh(), 3000);
     return () => clearInterval(t);
   }, [inFlight, router]);
 
@@ -26,26 +35,32 @@ export function MeetingActions({ id, status }: { id: string; status: string }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {status === "RECORDING" && (
-        <button className="btn" disabled={!!busy} onClick={() =>
-          confirm("Stop this recording and generate the recap from the audio received so far?\n\nUse this if the recording was interrupted (for example the tab was closed). If the meeting is still being recorded, the extension will stop.")
-          && call("finalize", `/api/meetings/${id}/finalize`)}>
-          {busy === "finalize" ? "Processing…" : "Stop & process now"}
-        </button>
-      )}
-      {(status === "FAILED" || status === "READY") && (
-        <button className="btn" disabled={!!busy} onClick={() => call("retry", `/api/meetings/${id}/retry`)}>Regenerate recap</button>
-      )}
-      {(status === "FAILED" || status === "READY") && (
-        <button className="btn" disabled={!!busy} onClick={() =>
-          confirm("Transcribe the audio again from scratch, then regenerate the recap? This replaces the current transcript and uses your selected transcription provider.")
-          && call("retranscribe", `/api/meetings/${id}/retry?full=1`)}>
-          {busy === "retranscribe" ? "Starting…" : "Re-transcribe"}
-        </button>
-      )}
-      <button className="btn" disabled={!!busy} onClick={() => confirm("Delete this meeting and its audio?") && call("delete", `/api/meetings/${id}`, "DELETE")}>Delete</button>
-      {error && <span className="text-sm text-red-600">{error}</span>}
+    <div className="space-y-3">
+      <JobProgress status={status} progress={progress} />
+      <div className="flex flex-wrap items-center gap-2">
+        <DownloadMenu id={id} hasAudio={hasAudio} hasTranscript={hasTranscript} hasSummary={hasSummary} />
+        {actions.includes("finalize") && (
+          <button className="btn" disabled={!!busy} onClick={() =>
+            confirm("Stop this recording and generate the transcript and recap from the audio received so far?\n\nUse this if the recording was interrupted (for example the tab was closed). If the meeting is still being recorded, the extension will stop.")
+            && call("finalize", `/api/meetings/${id}/finalize`)}>
+            {busy === "finalize" ? "Processing…" : "Stop & process now"}
+          </button>
+        )}
+        {actions.includes("retranscribe") && (
+          <button className="btn" disabled={!!busy} onClick={() =>
+            confirm("Transcribe the audio again from scratch? The recap is regenerated afterwards.")
+            && call("retranscribe", `/api/meetings/${id}/retry?stage=transcribe`)}>
+            {busy === "retranscribe" ? "Starting…" : "Re-transcribe"}
+          </button>
+        )}
+        {actions.includes("rerecap") && (
+          <button className="btn" disabled={!!busy} onClick={() => call("rerecap", `/api/meetings/${id}/retry?stage=recap`)}>
+            {busy === "rerecap" ? "Starting…" : "Re-recap"}
+          </button>
+        )}
+        <button className="btn" disabled={!!busy} onClick={() => confirm("Delete this meeting and its audio?") && call("delete", `/api/meetings/${id}`, "DELETE")}>Delete</button>
+        {error && <span className="text-sm text-red-600">{error}</span>}
+      </div>
     </div>
   );
 }

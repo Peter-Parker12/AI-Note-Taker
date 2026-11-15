@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { fmtDate, fmtDuration, STATUS_LABEL } from "@/lib/format";
+import { fmtDate, fmtDuration, failedStageOf, statusLabel } from "@/lib/format";
 import type { MeetingSummary } from "@/lib/summarize";
 import type { Segment } from "@/lib/stt";
 import { MeetingActions } from "@/components/meeting-actions";
@@ -19,26 +19,24 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   if (!m) notFound();
   const summary = m.summary as unknown as MeetingSummary | null;
   const transcript = (m.transcript as unknown as Segment[] | null) ?? [];
+  const hasTranscript = !!m.transcriptText?.trim();
+  const stageInput = { status: m.status, failedStage: m.failedStage, hasTranscript };
+  const stage = failedStageOf(stageInput);
 
   return (
     <div className="space-y-6">
       <div>
         <RenameTitle id={m.id} title={m.title} />
-        <p className="muted">{fmtDate(m.startedAt)} · {m.platform}{m.durationSec ? ` · ${fmtDuration(m.durationSec)}` : ""} · {STATUS_LABEL[m.status]}</p>
+        <p className="muted">{fmtDate(m.startedAt)} · {m.platform}{m.durationSec ? ` · ${fmtDuration(m.durationSec)}` : ""} · {statusLabel(stageInput)}</p>
         {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
       </div>
       {m.audioPath && (
-        <section className="card space-y-2">
+        <section className="card">
           <audio controls preload="none" className="w-full" src={`/api/meetings/${m.id}/audio`} />
-          <p className="muted space-x-3">
-            <a className="hover:underline" href={`/api/meetings/${m.id}/audio?dl=1`}>Download audio</a>
-            <a className="hover:underline" href={`/api/meetings/${m.id}/download?format=md`}>Recap (.md)</a>
-            <a className="hover:underline" href={`/api/meetings/${m.id}/download?format=txt`}>Transcript (.txt)</a>
-            <a className="hover:underline" href={`/api/meetings/${m.id}/download?format=json`}>All data (.json)</a>
-          </p>
         </section>
       )}
-      <MeetingActions id={m.id} status={m.status} />
+      <MeetingActions id={m.id} status={m.status} failedStage={m.failedStage} progress={m.progress}
+        hasAudio={!!m.audioPath} hasTranscript={hasTranscript} hasSummary={!!summary} />
 
       {summary ? (
         <>
@@ -67,7 +65,9 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
             <Chat meetingId={m.id} />
           </section>
         </>
-      ) : m.status !== "FAILED" && <p className="muted">Recap is being generated. This page refreshes automatically.</p>}
+      ) : stage === "SUMMARIZE" ? (
+        <p className="muted">The transcript is ready but the recap failed. Use Re-recap to try again.</p>
+      ) : m.status !== "FAILED" && m.status !== "READY" && <p className="muted">The transcript and recap are being generated. This page refreshes automatically.</p>}
 
       {transcript.length > 0 && (
         <details className="card">

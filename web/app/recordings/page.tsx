@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { audioSize, searchMeetings } from "@/lib/meetings";
-import { STATUS_LABEL } from "@/lib/format";
+import { STATUS_LABEL, statusLabel } from "@/lib/format";
 import { RecordingsTable, type Row } from "@/components/recordings-table";
 import { UploadForm } from "@/components/upload-form";
 
@@ -20,13 +20,16 @@ export default async function Recordings({ searchParams }: { searchParams: Promi
 
   const meetings = await prisma.meeting.findMany({
     where, orderBy: { startedAt: "desc" }, take: 200,
-    select: { id: true, title: true, platform: true, status: true, startedAt: true, durationSec: true, audioPath: true },
+    select: { id: true, title: true, platform: true, status: true, failedStage: true, progress: true, startedAt: true, durationSec: true, audioPath: true, transcriptText: true, summary: true },
   });
-  const rows: Row[] = await Promise.all(meetings.map(async (m) => ({
-    id: m.id, title: m.title, platform: m.platform, status: m.status, statusLabel: STATUS_LABEL[m.status],
+  const rows: Row[] = await Promise.all(meetings.map(async (m) => {
+    const hasTranscript = !!m.transcriptText?.trim();
+    return {
+    id: m.id, title: m.title, platform: m.platform, status: m.status, failedStage: m.failedStage, progress: m.progress,
+    statusLabel: statusLabel({ status: m.status, failedStage: m.failedStage, hasTranscript }), hasTranscript, hasSummary: m.summary != null,
     startedAt: m.startedAt.toISOString(), durationSec: m.durationSec, sizeBytes: await audioSize(m.audioPath),
     hasAudio: !!m.audioPath,
-  })));
+  };}));
   const totalBytes = rows.reduce((n, r) => n + r.sizeBytes, 0);
 
   return (
