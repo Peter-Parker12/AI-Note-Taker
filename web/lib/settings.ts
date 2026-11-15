@@ -8,7 +8,7 @@ export const CLAUDE_MODELS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-ha
 export type ResolvedSettings = {
   aiInstructions: string;
   recapLanguage: "auto" | "vi" | "en";
-  sttProvider: "openai" | "deepgram";
+  sttProvider: "openai" | "deepgram" | "local";
   sttLanguage: string;
   claudeModel: string;
   anthropicKey?: string; // undefined => SDK falls back to ANTHROPIC_API_KEY

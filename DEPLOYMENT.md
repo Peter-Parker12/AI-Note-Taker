@@ -49,3 +49,25 @@ docker run --rm -v note-taker_audio_data:/data -v "$PWD":/out alpine tar czf /ou
 ## Notes
 - Recording consent: tell attendees you're recording. Some jurisdictions require explicit consent.
 - Cost drivers are STT (per audio minute) and Claude (per recap); both are per-meeting, not per-user-session.
+
+## Local transcription (no OpenAI/Deepgram)
+
+Whisper can run on your VPS as an OpenAI-compatible service, so audio never leaves the box.
+
+```bash
+docker compose --profile local-stt up -d whisper
+# one-time model download (pick a size; see the table below)
+curl -X POST http://127.0.0.1:8000/v1/models/Systran/faster-whisper-small
+```
+
+Then set `STT_PROVIDER=local` and `LOCAL_STT_MODEL=Systran/faster-whisper-small` in `.env`
+(or choose "Local Whisper" per account in Settings), and `docker compose up -d`.
+
+| Model | RAM | CPU speed | Vietnamese quality |
+|---|---|---|---|
+| faster-whisper-small | ~1 GB | ~real time | okay |
+| faster-whisper-medium | ~2.5 GB | ~0.5x real time | good |
+| faster-whisper-large-v3 | ~5 GB | slow on CPU, wants a GPU | best |
+
+Vietnamese + English mixed speech is where small models struggle most; test with your own audio
+(`npx tsx scripts/stt-bench.ts <file> local openai`) before relying on it.

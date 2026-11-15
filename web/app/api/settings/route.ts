@@ -11,7 +11,7 @@ const nullableText = (max: number) => z.string().trim().max(max).nullable().opti
 const schema = z.object({
   aiInstructions: nullableText(4000),
   recapLanguage: z.enum(["auto", "vi", "en"]).optional(),
-  sttProvider: z.enum(["openai", "deepgram"]).nullable().optional(),
+  sttProvider: z.enum(["openai", "deepgram", "local"]).nullable().optional(),
   sttLanguage: z.string().regex(/^(auto|[a-z]{2,3})$/).nullable().optional(),
   claudeModel: z.string().regex(/^claude-[\w.-]+$/).max(80).nullable().optional(),
   anthropicKey: nullableText(300), // string = set, ""/null = clear, absent = unchanged

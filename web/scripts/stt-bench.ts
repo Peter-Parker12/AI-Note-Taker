@@ -1,4 +1,4 @@
-// Usage: npx tsx scripts/stt-bench.ts <audio-file> [openai|deepgram ...]
+// Usage: npx tsx scripts/stt-bench.ts <audio-file> [openai|deepgram|local ...]
 // Compares STT providers on a real recording (use ~5-10 min of mixed Vietnamese/English).
 import "dotenv/config";
 import fs from "fs/promises";

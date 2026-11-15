@@ -83,7 +83,7 @@ export function SettingsForm({ view, models }: { view: View; models: string[] })
             <span className="font-medium">Provider</span>
             <select className="input" value={f.sttProvider} onChange={(e) => set("sttProvider", e.target.value)}>
               <option value="">Server default ({defaults.sttProvider})</option>
-              <option value="openai">OpenAI Whisper</option><option value="deepgram">Deepgram</option>
+              <option value="openai">OpenAI Whisper</option><option value="deepgram">Deepgram</option><option value="local">Local Whisper (self-hosted)</option>
             </select>
           </label>
           <label className={field}>
