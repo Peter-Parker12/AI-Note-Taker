@@ -37,6 +37,13 @@ export function MeetingActions({ id, status }: { id: string; status: string }) {
       {(status === "FAILED" || status === "READY") && (
         <button className="btn" disabled={!!busy} onClick={() => call("retry", `/api/meetings/${id}/retry`)}>Regenerate recap</button>
       )}
+      {(status === "FAILED" || status === "READY") && (
+        <button className="btn" disabled={!!busy} onClick={() =>
+          confirm("Transcribe the audio again from scratch, then regenerate the recap? This replaces the current transcript and uses your selected transcription provider.")
+          && call("retranscribe", `/api/meetings/${id}/retry?full=1`)}>
+          {busy === "retranscribe" ? "Starting…" : "Re-transcribe"}
+        </button>
+      )}
       <button className="btn" disabled={!!busy} onClick={() => confirm("Delete this meeting and its audio?") && call("delete", `/api/meetings/${id}`, "DELETE")}>Delete</button>
       {error && <span className="text-sm text-red-600">{error}</span>}
     </div>
