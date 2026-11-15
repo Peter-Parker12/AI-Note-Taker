@@ -53,7 +53,7 @@ export async function runTranscribe(meetingId: string, signal?: AbortSignal) {
   await fs.mkdir(work, { recursive: true });
 
   try {
-    const durationSec = await probeDuration(meeting.audioPath);
+    const durationSec = await probeDuration(meeting.audioPath, signal);
     // L = my mic, R = everyone else. Separate channels give speaker attribution for free.
     const plan: ChannelPlan[] = meeting.stereo
       ? [{ label: "me", channel: 0, speaker: "Me" }, { label: "others", channel: 1, speaker: "Others" }]
@@ -61,7 +61,7 @@ export async function runTranscribe(meetingId: string, signal?: AbortSignal) {
 
     // Split everything first so the progress bar knows the total number of chunks.
     const split = [];
-    for (const p of plan) split.push({ ...p, chunks: await splitChannel(meeting.audioPath, work, p.label, p.channel) });
+    for (const p of plan) split.push({ ...p, chunks: await splitChannel(meeting.audioPath, work, p.label, p.channel, signal) });
     const total = split.reduce((n, p) => n + p.chunks.length, 0) || 1;
     let done = 0;
     const onChunkDone = async () => {

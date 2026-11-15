@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import fs from "fs/promises";
+import path from "path";
 import { runSummarize, runTranscribe } from "@/lib/pipeline";
+import { DATA_DIR } from "@/lib/env";
 
 const POLL_MS = 3000;
 let started = false;
@@ -76,6 +79,21 @@ async function sweepStaleRecordings() {
   }
 }
 
+/**
+ * Leftover scratch folders (a crash or restart in the middle of a job skips the normal cleanup).
+ * Run at startup, when no job can be using one; the next run recreates what it needs.
+ */
+async function removeOrphanedWorkDirs() {
+  const root = path.resolve(DATA_DIR, "meetings");
+  const ids = await fs.readdir(root).catch(() => [] as string[]);
+  let n = 0;
+  for (const id of ids) {
+    const work = path.join(root, id, "work");
+    if (await fs.stat(work).then(() => true, () => false)) { await fs.rm(work, { recursive: true, force: true }); n++; }
+  }
+  if (n) console.log(`[worker] removed ${n} leftover work folder(s)`);
+}
+
 export function startWorker() {
   if (started) return;
   started = true;
@@ -91,6 +109,7 @@ export function startWorker() {
     }
     setTimeout(loop, POLL_MS);
   };
-  loop();
+  // Clear leftovers first, so cleanup can never race a job that has just started.
+  removeOrphanedWorkDirs().catch((e) => console.error("[worker] cleanup failed", e)).finally(loop);
   console.log("[worker] started");
 }
