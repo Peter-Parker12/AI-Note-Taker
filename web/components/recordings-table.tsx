@@ -31,6 +31,24 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
     setSelected(new Set()); router.refresh();
   }
 
+  const canRetranscribe = (r: Row) => r.hasAudio && (r.status === "READY" || r.status === "FAILED");
+
+  // Queues a from-scratch transcription (then recap) for each id, one at a time.
+  async function retranscribe(ids: string[]) {
+    if (!ids.length) return setError("Nothing to re-transcribe: recordings need audio and a Ready or Failed status.");
+    if (!confirm(`Transcribe ${ids.length} recording(s) again from scratch? This replaces their transcripts and recaps.`)) return;
+    setBusy(true); setError("");
+    let failed = 0;
+    for (const id of ids) {
+      const res = await fetch(`/api/meetings/${id}/retry?full=1`, { method: "POST" }).catch(() => null);
+      if (!res?.ok) failed++;
+    }
+    setBusy(false);
+    if (failed) setError(`${failed} of ${ids.length} could not be queued.`);
+    else setSelected(new Set());
+    router.refresh();
+  }
+
   if (!rows.length) return <p className="muted">No recordings match.</p>;
   return (
     <div className="space-y-2">
@@ -38,6 +56,7 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
         {selected.size > 0 && (
           <>
             <span className="text-sm">{selected.size} selected</span>
+            <button className="btn" disabled={busy} onClick={() => retranscribe(rows.filter((r) => selected.has(r.id) && canRetranscribe(r)).map((r) => r.id))}>Re-transcribe selected</button>
             <button className="btn" disabled={busy} onClick={bulkDelete}>{busy ? "Deleting…" : "Delete selected"}</button>
           </>
         )}
@@ -49,7 +68,7 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
             <tr>
               <th className="w-8 py-2"><input type="checkbox" aria-label="Select all" checked={allSelected}
                 onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Title</th><th>Date</th><th>Source</th><th>Length</th><th>Size</th><th>Status</th><th className="text-right">Download</th>
+              <th>Title</th><th>Date</th><th>Source</th><th>Length</th><th>Size</th><th>Status</th><th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -63,6 +82,9 @@ export function RecordingsTable({ rows }: { rows: Row[] }) {
                 <td className="pr-3">{mb(r.sizeBytes)}</td>
                 <td className={`pr-3 ${r.status === "FAILED" ? "text-red-600" : r.status === "READY" ? "text-green-600" : "text-amber-600"}`}>{r.statusLabel}</td>
                 <td className="space-x-2 whitespace-nowrap text-right">
+                  {canRetranscribe(r) && (
+                    <button className="hover:underline disabled:opacity-50" disabled={busy} onClick={() => retranscribe([r.id])}>re-transcribe</button>
+                  )}
                   {r.hasAudio && <a className="hover:underline" href={`/api/meetings/${r.id}/audio?dl=1`}>audio</a>}
                   <a className="hover:underline" href={`/api/meetings/${r.id}/download?format=md`}>recap</a>
                   <a className="hover:underline" href={`/api/meetings/${r.id}/download?format=txt`}>transcript</a>
