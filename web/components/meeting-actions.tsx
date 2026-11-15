@@ -46,6 +46,13 @@ export function MeetingActions({ id, status, failedStage, progress, hasAudio, ha
             {busy === "finalize" ? "Processing…" : "Stop & process now"}
           </button>
         )}
+        {actions.includes("cancel") && (
+          <button className="btn" disabled={!!busy} onClick={() =>
+            confirm("Cancel this job? Nothing is lost: the recording stays, and you can re-transcribe or re-recap afterwards.")
+            && call("cancel", `/api/meetings/${id}/cancel`)}>
+            {busy === "cancel" ? "Cancelling…" : "Cancel"}
+          </button>
+        )}
         {actions.includes("retranscribe") && (
           <button className="btn" disabled={!!busy} onClick={() =>
             confirm("Transcribe the audio again from scratch? The recap is regenerated afterwards.")

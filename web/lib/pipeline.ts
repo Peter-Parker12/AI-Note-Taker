@@ -19,13 +19,14 @@ export function transcriptToText(segments: Segment[]) {
 type ChannelPlan = { label: string; channel: 0 | 1 | undefined; speaker: string };
 
 async function transcribeChunks(
-  cfg: ResolvedSettings, chunks: string[], speaker: string, onChunkDone: () => Promise<void>,
+  cfg: ResolvedSettings, chunks: string[], speaker: string, onChunkDone: () => Promise<void>, signal?: AbortSignal,
 ) {
   const stt = getStt(cfg.sttProvider);
   const apiKey = cfg.sttProvider === "deepgram" ? cfg.deepgramKey : cfg.openaiKey;
   const out: Segment[] = [];
   for (let i = 0; i < chunks.length; i++) {
-    const segs = await stt.transcribe(chunks[i], { apiKey, language: cfg.sttLanguage });
+    signal?.throwIfAborted();
+    const segs = await stt.transcribe(chunks[i], { apiKey, language: cfg.sttLanguage, signal });
     for (const s of segs) {
       if (!s.text) continue;
       out.push({
@@ -40,7 +41,7 @@ async function transcribeChunks(
   return out;
 }
 
-export async function runTranscribe(meetingId: string) {
+export async function runTranscribe(meetingId: string, signal?: AbortSignal) {
   const meeting = await prisma.meeting.findUniqueOrThrow({ where: { id: meetingId } });
   if (!meeting.audioPath) throw new Error("Meeting has no audio");
   const cfg = await getUserSettings(meeting.userId);
@@ -68,8 +69,9 @@ export async function runTranscribe(meetingId: string) {
       await prisma.meeting.updateMany({ where: { id: meetingId }, data: { progress: Math.min(99, Math.round((done / total) * 100)) } });
     };
 
+    signal?.throwIfAborted();
     const segments: Segment[] = [];
-    for (const p of split) segments.push(...(await transcribeChunks(cfg, p.chunks, p.speaker, onChunkDone)));
+    for (const p of split) segments.push(...(await transcribeChunks(cfg, p.chunks, p.speaker, onChunkDone, signal)));
     segments.sort((a, b) => a.start - b.start);
 
     await prisma.meeting.update({
@@ -82,7 +84,7 @@ export async function runTranscribe(meetingId: string) {
   }
 }
 
-export async function runSummarize(meetingId: string) {
+export async function runSummarize(meetingId: string, signal?: AbortSignal) {
   const meeting = await prisma.meeting.findUniqueOrThrow({ where: { id: meetingId } });
   if (!meeting.transcriptText?.trim()) throw new Error("Empty transcript");
   await prisma.meeting.update({ where: { id: meetingId }, data: { status: "SUMMARIZING", error: null, failedStage: null, progress: null } });
@@ -90,6 +92,7 @@ export async function runSummarize(meetingId: string) {
   const summary = await summarizeTranscript(
     { title: meeting.title, startedAt: meeting.startedAt, transcript: meeting.transcriptText },
     cfg,
+    signal,
   );
   const title = meeting.title === "Untitled meeting" ? summary.title : meeting.title;
   await prisma.meeting.update({ where: { id: meetingId }, data: { summary, title, status: "READY", error: null, failedStage: null, progress: null } });

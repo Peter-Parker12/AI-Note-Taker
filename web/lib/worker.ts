@@ -29,12 +29,19 @@ async function failJob(job: { id: string; type: string; meetingId: string }, msg
 async function tick() {
   const job = await claim();
   if (!job) return false;
+  // The Cancel button sets job.cancelRequested; poll it and abort whatever the job is waiting on.
+  const ac = new AbortController();
+  const watcher = setInterval(async () => {
+    const j = await prisma.job.findUnique({ where: { id: job.id }, select: { cancelRequested: true } }).catch(() => null);
+    if (j?.cancelRequested) ac.abort();
+  }, 1500);
   try {
-    if (job.type === "TRANSCRIBE") await runTranscribe(job.meetingId);
-    else await runSummarize(job.meetingId);
+    if (job.type === "TRANSCRIBE") await runTranscribe(job.meetingId, ac.signal);
+    else await runSummarize(job.meetingId, ac.signal);
+    if (ac.signal.aborted) throw new Error("Cancelled by user");
     await prisma.job.update({ where: { id: job.id }, data: { status: "DONE", lastError: null } });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = ac.signal.aborted ? "Cancelled by user" : e instanceof Error ? e.message : String(e);
     try {
       await failJob(job, msg);
       console.error(`[worker] ${job.type} ${job.meetingId} failed (stopped):`, msg);
@@ -42,6 +49,8 @@ async function tick() {
       // Even recording the failure failed (e.g. DB hiccup); never let that take the worker down.
       console.error(`[worker] ${job.type} ${job.meetingId} failed and could not be recorded:`, msg, e2);
     }
+  } finally {
+    clearInterval(watcher);
   }
   return true;
 }

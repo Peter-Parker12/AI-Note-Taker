@@ -7,7 +7,7 @@ import type { SttProvider } from "./types";
 // No API key needed, and audio never leaves your VPS.
 export const localStt: SttProvider = {
   name: "local",
-  async transcribe(file, { language }) {
+  async transcribe(file, { language, signal }) {
     const base = (process.env.LOCAL_STT_URL ?? "http://whisper:8000/v1").replace(/\/+$/, "");
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(await fs.readFile(file))]), path.basename(file));
@@ -16,8 +16,9 @@ export const localStt: SttProvider = {
     if (language !== "auto") form.append("language", language);
     let res: Response;
     try {
-      res = await fetch(`${base}/audio/transcriptions`, { method: "POST", body: form, signal: AbortSignal.timeout(30 * 60_000) });
+      res = await fetch(`${base}/audio/transcriptions`, { method: "POST", body: form, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30 * 60_000)]) : AbortSignal.timeout(30 * 60_000) });
     } catch (e) {
+      if (signal?.aborted) throw e; // cancelled by the user: let the worker report it as such
       throw new Error(`Local STT unreachable at ${base} (is the whisper service running?): ${(e as Error).message}`);
     }
     if (!res.ok) throw new Error(`Local STT ${res.status}: ${await res.text()}`);

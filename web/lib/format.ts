@@ -29,12 +29,12 @@ export function statusLabel(m: StageInput) {
   return STATUS_LABEL[m.status] ?? m.status;
 }
 
-export type MeetingAction = "finalize" | "retranscribe" | "rerecap";
+export type MeetingAction = "finalize" | "retranscribe" | "rerecap" | "cancel";
 
 /** What the user may do right now. Transcribe first, then recap: a recap needs a transcript. */
 export function availableActions(m: StageInput & { hasAudio: boolean }): MeetingAction[] {
   if (m.status === "RECORDING") return ["finalize"];
-  if (m.status !== "READY" && m.status !== "FAILED") return []; // queued / running: nothing to do
+  if (m.status !== "READY" && m.status !== "FAILED") return ["cancel"]; // queued / running: the only thing to do is stop it
   const out: MeetingAction[] = [];
   if (m.hasAudio) out.push("retranscribe");
   if (m.hasTranscript && failedStageOf(m) !== "TRANSCRIBE") out.push("rerecap");

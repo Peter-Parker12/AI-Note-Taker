@@ -37,6 +37,7 @@ export function recapSystemPrompt(cfg: Pick<ResolvedSettings, "recapLanguage" | 
 export async function summarizeTranscript(
   input: { title: string; startedAt: Date; transcript: string },
   cfg: ResolvedSettings,
+  signal?: AbortSignal,
 ): Promise<MeetingSummary> {
   const res = await claudeClient(cfg).messages.create({
     model: cfg.claudeModel,
@@ -73,7 +74,7 @@ export async function summarizeTranscript(
       role: "user",
       content: `Meeting: ${input.title}\nDate: ${input.startedAt.toISOString()}\n\n<transcript>\n${input.transcript}\n</transcript>`,
     }],
-  });
+  }, { signal });
   const block = res.content.find((b) => b.type === "tool_use");
   if (!block || block.type !== "tool_use") throw new Error("Claude returned no recap");
   return block.input as MeetingSummary;

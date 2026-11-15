@@ -4,7 +4,7 @@ import type { SttProvider } from "./types";
 // Diarizes within a file, so the "others" channel can be split into Speaker 1..n.
 export const deepgramStt: SttProvider = {
   name: "deepgram",
-  async transcribe(file, { apiKey, language }) {
+  async transcribe(file, { apiKey, language, signal }) {
     const key = apiKey ?? process.env.DEEPGRAM_API_KEY;
     if (!key) throw new Error("No Deepgram API key: add yours in Account settings or set DEEPGRAM_API_KEY on the server");
     const params = new URLSearchParams({
@@ -20,6 +20,7 @@ export const deepgramStt: SttProvider = {
       method: "POST",
       headers: { Authorization: `Token ${key}`, "Content-Type": "audio/mpeg" },
       body: new Uint8Array(await fs.readFile(file)),
+      signal,
     });
     if (!res.ok) throw new Error(`Deepgram STT ${res.status}: ${await res.text()}`);
     const json = (await res.json()) as {

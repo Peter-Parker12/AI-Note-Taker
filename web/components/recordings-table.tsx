@@ -15,11 +15,12 @@ export type Row = {
 const mb = (b: number) => (b ? (b / 1024 / 1024).toFixed(1) + " MB" : "—");
 const dur = (s: number | null) => (s ? `${Math.floor(s / 60)}m` : "—");
 
-const ACTION_LABEL: Record<MeetingAction, string> = { finalize: "stop & process", retranscribe: "re-transcribe", rerecap: "re-recap" };
+const ACTION_LABEL: Record<MeetingAction, string> = { finalize: "stop & process", retranscribe: "re-transcribe", rerecap: "re-recap", cancel: "cancel" };
 const ACTION_URL: Record<MeetingAction, (id: string) => string> = {
   finalize: (id) => `/api/meetings/${id}/finalize`,
   retranscribe: (id) => `/api/meetings/${id}/retry?stage=transcribe`,
   rerecap: (id) => `/api/meetings/${id}/retry?stage=recap`,
+  cancel: (id) => `/api/meetings/${id}/cancel`,
 };
 
 export function RecordingsTable({ rows }: { rows: Row[] }) {

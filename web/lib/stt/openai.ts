@@ -6,7 +6,7 @@ import type { SttProvider } from "./types";
 // gpt-4o-transcribe does not. Language is auto-detected unless STT_LANGUAGE is set.
 export const openaiStt: SttProvider = {
   name: "openai",
-  async transcribe(file, { apiKey, language }) {
+  async transcribe(file, { apiKey, language, signal }) {
     const key = apiKey ?? process.env.OPENAI_API_KEY;
     if (!key) throw new Error("No OpenAI API key: add yours in Account settings or set OPENAI_API_KEY on the server");
     const form = new FormData();
@@ -18,6 +18,7 @@ export const openaiStt: SttProvider = {
       method: "POST",
       headers: { Authorization: `Bearer ${key}` },
       body: form,
+      signal,
     });
     if (!res.ok) throw new Error(`OpenAI STT ${res.status}: ${await res.text()}`);
     const json = (await res.json()) as { segments?: { start: number; end: number; text: string }[]; text: string };

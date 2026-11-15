@@ -18,6 +18,8 @@ export type SttOptions = {
   apiKey?: string;
   /** "auto" lets the provider detect the language. */
   language: string;
+  /** Aborted when the user cancels the job. */
+  signal?: AbortSignal;
 };
 
 export interface SttProvider {

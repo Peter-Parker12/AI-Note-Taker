@@ -97,6 +97,8 @@ model Job {
   meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   status    JobStatus @default(PENDING)
   attempts  Int       @default(0)
+  // Set by the Cancel button; the worker polls it and aborts the running job.
+  cancelRequested Boolean @default(false)
   runAt     DateTime  @default(now())
   lastError String?
   createdAt DateTime  @default(now())
