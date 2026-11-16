@@ -33,6 +33,15 @@ Optional hardening: put a Cloudflare Access policy on the hostname, but exclude 
 ## 4. Install the extension
 `chrome://extensions` → Developer mode → **Load unpacked** → select `extension/`. Sign in to the web app → *Extension setup* → create a token → paste server URL + token in the extension options, then click **Grant microphone** once.
 
+## Email (optional)
+
+Each account sets its own SMTP mailbox in **Account → Settings → Email (SMTP)**: host, port, security, username,
+password (stored encrypted like the API keys), and the From address/name. **Send test email** checks it. Then every
+meeting with a recap gets an **Email recap** button (recipients plus an optional note); the mail is sent from that
+account's mailbox. For Gmail use `smtp.gmail.com`, port 587, and an app password. Set `AUTH_URL` so the email links
+back to the meeting. The settings API is session-only, so an extension token cannot read or change SMTP credentials,
+though it can send a recap through `POST /api/meetings/:id/email`.
+
 ## Updating
 ```bash
 git pull && docker compose up -d --build
@@ -71,3 +80,24 @@ Then set `STT_PROVIDER=local` and `LOCAL_STT_MODEL=Systran/faster-whisper-small`
 
 Vietnamese + English mixed speech is where small models struggle most; test with your own audio
 (`npx tsx scripts/stt-bench.ts <file> local openai`) before relying on it.
+
+## Remote processing (local Whisper + Claude on your own machine)
+
+Set `PROCESSING_MODE=remote` in `.env` and `docker compose up -d` again. The server then only stores
+recordings and shows recaps; it no longer needs STT or Anthropic keys, and the `whisper` service is not needed.
+New recordings, Re-transcribe and Re-recap queue jobs that wait for the local worker. Setup: [mcp/README.md](mcp/README.md).
+
+### REST API
+
+Every endpoint takes `Authorization: Bearer <token>` (the same tokens the extension uses). For one meeting:
+
+| Resource | Create / replace | Read | Delete |
+|---|---|---|---|
+| Meeting | `POST /api/meetings` (`{title, platform, startedAt, stereo, draft:true}`), `PATCH /api/meetings/:id` | `GET /api/meetings`, `GET /api/meetings/:id` | `DELETE /api/meetings/:id` |
+| Recording | `PUT /api/meetings/:id/audio` (raw bytes; `?stereo=`, `?transcribe=0`, `X-Filename`) | `GET …/audio` | `DELETE …/audio` |
+| Transcript | `PUT …/transcript` (`{segments}` or `{text}`, `generateRecap`) | `GET …/transcript` (`?format=text`) | `DELETE …/transcript` |
+| Recap | `PUT …/recap` (`{title, summary, decisions, actionItems, topics}`) | `GET …/recap` | `DELETE …/recap` |
+| Email | `POST …/email` (`{to: [...], note}`) | | |
+
+Edits are refused with 409 while a meeting is being recorded or processed. `MAX_AUDIO_MB` (default 500) caps an upload;
+a Cloudflare Tunnel on the free plan also caps one request at 100 MB.

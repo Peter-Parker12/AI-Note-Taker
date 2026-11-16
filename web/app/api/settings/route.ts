@@ -17,6 +17,14 @@ const schema = z.object({
   anthropicKey: nullableText(300), // string = set, ""/null = clear, absent = unchanged
   openaiKey: nullableText(300),
   deepgramKey: nullableText(300),
+  // Outgoing email. Empty host clears it; smtpPass follows the same set / clear / unchanged rule as the keys.
+  smtpHost: z.string().trim().max(255).regex(/^[\w.-]*$/, "SMTP host must be a hostname such as smtp.gmail.com").nullable().optional(),
+  smtpPort: z.number().int().min(1).max(65535).nullable().optional(),
+  smtpSecurity: z.enum(["auto", "ssl", "starttls"]).optional(),
+  smtpUser: nullableText(255),
+  smtpPass: nullableText(500),
+  smtpFromEmail: z.string().trim().max(255).email("From address must be a valid email").or(z.literal("")).nullable().optional(),
+  smtpFromName: nullableText(100),
 });
 
 // Session-only on purpose: a leaked extension token must not be able to read or replace API keys.
@@ -41,8 +49,14 @@ export async function PUT(req: Request) {
   if (b.sttProvider !== undefined) data.sttProvider = b.sttProvider;
   if (b.sttLanguage !== undefined) data.sttLanguage = b.sttLanguage;
   if (b.claudeModel !== undefined) data.claudeModel = b.claudeModel;
+  if (b.smtpHost !== undefined) data.smtpHost = empty(b.smtpHost);
+  if (b.smtpPort !== undefined) data.smtpPort = b.smtpPort;
+  if (b.smtpSecurity !== undefined) data.smtpSecurity = b.smtpSecurity;
+  if (b.smtpUser !== undefined) data.smtpUser = empty(b.smtpUser);
+  if (b.smtpFromEmail !== undefined) data.smtpFromEmail = empty(b.smtpFromEmail);
+  if (b.smtpFromName !== undefined) data.smtpFromName = empty(b.smtpFromName);
   try {
-    for (const [field, col] of [["anthropicKey", "anthropicKeyEnc"], ["openaiKey", "openaiKeyEnc"], ["deepgramKey", "deepgramKeyEnc"]] as const) {
+    for (const [field, col] of [["anthropicKey", "anthropicKeyEnc"], ["openaiKey", "openaiKeyEnc"], ["deepgramKey", "deepgramKeyEnc"], ["smtpPass", "smtpPassEnc"]] as const) {
       const v = empty(b[field]);
       if (v !== undefined) data[col] = v ? encrypt(v) : null;
     }

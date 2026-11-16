@@ -14,14 +14,21 @@ const KEYS: { name: KeyName; label: string; hint: string }[] = [
 
 export function SettingsForm({ view, models }: { view: View; models: string[] }) {
   const router = useRouter();
-  const { settings: s, keys, defaults } = view;
+  const { settings: s, keys, defaults, smtp } = view;
   const [f, setF] = useState({
     aiInstructions: s.aiInstructions,
     recapLanguage: s.recapLanguage,
     sttProvider: s.sttProvider ?? "",
     sttLanguage: s.sttLanguage ?? "",
     claudeModel: s.claudeModel ?? "",
+    smtpHost: smtp.host, smtpPort: smtp.port ? String(smtp.port) : "", smtpSecurity: smtp.security,
+    smtpUser: smtp.user, smtpFromEmail: smtp.fromEmail, smtpFromName: smtp.fromName,
   });
+  const [smtpPass, setSmtpPass] = useState("");
+  const [clearSmtpPass, setClearSmtpPass] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [keyInput, setKeyInput] = useState<Record<KeyName, string>>({ anthropic: "", openai: "", deepgram: "" });
   const [clearKey, setClearKey] = useState<Record<KeyName, boolean>>({ anthropic: false, openai: false, deepgram: false });
   const [busy, setBusy] = useState(false);
@@ -34,7 +41,11 @@ export function SettingsForm({ view, models }: { view: View; models: string[] })
     const body: Record<string, unknown> = {
       aiInstructions: f.aiInstructions, recapLanguage: f.recapLanguage,
       sttProvider: f.sttProvider || null, sttLanguage: f.sttLanguage || null, claudeModel: f.claudeModel || null,
+      smtpHost: f.smtpHost, smtpPort: f.smtpPort.trim() ? Number(f.smtpPort) : null, smtpSecurity: f.smtpSecurity,
+      smtpUser: f.smtpUser, smtpFromEmail: f.smtpFromEmail, smtpFromName: f.smtpFromName,
     };
+    if (clearSmtpPass) body.smtpPass = null;
+    else if (smtpPass) body.smtpPass = smtpPass;
     for (const { name } of KEYS) {
       if (clearKey[name]) body[`${name}Key`] = null;
       else if (keyInput[name].trim()) body[`${name}Key`] = keyInput[name].trim();
@@ -44,8 +55,17 @@ export function SettingsForm({ view, models }: { view: View; models: string[] })
     if (!res.ok) return setMsg({ ok: false, text: (await res.json().catch(() => null))?.error ?? "Save failed" });
     setKeyInput({ anthropic: "", openai: "", deepgram: "" });
     setClearKey({ anthropic: false, openai: false, deepgram: false });
+    setSmtpPass(""); setClearSmtpPass(false);
     setMsg({ ok: true, text: "Saved. New recordings use these settings." });
     router.refresh();
+  }
+
+  async function sendTest() {
+    setTesting(true); setTestMsg(null);
+    const res = await fetch("/api/settings/smtp-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(testTo.trim() ? { to: testTo.trim() } : {}) });
+    const json = await res.json().catch(() => ({}));
+    setTesting(false);
+    setTestMsg(res.ok ? { ok: true, text: `Test email sent to ${json.to}.` } : { ok: false, text: json.error ?? "Could not send" });
   }
 
   const field = "block space-y-1 text-sm";
@@ -121,6 +141,65 @@ export function SettingsForm({ view, models }: { view: View; models: string[] })
             </div>
           );
         })}
+      </fieldset>
+
+      <fieldset className="space-y-3">
+        <legend className="mb-1 font-semibold">Email (SMTP) <span className="muted font-normal">(optional)</span></legend>
+        <p className="muted">
+          Lets you email a recap from the meeting page, sent from your own mailbox.
+          {smtp.ready ? " Email is set up." : " Not set up yet."} For Gmail use smtp.gmail.com, port 587, and an app password.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-[1fr_7rem_11rem]">
+          <label className={field}>
+            <span className="font-medium">SMTP host</span>
+            <input className="input" value={f.smtpHost} placeholder="smtp.gmail.com" autoComplete="off" onChange={(e) => set("smtpHost", e.target.value)} />
+          </label>
+          <label className={field}>
+            <span className="font-medium">Port</span>
+            <input className="input" inputMode="numeric" value={f.smtpPort} placeholder="587" onChange={(e) => set("smtpPort", e.target.value.replace(/\D/g, ""))} />
+          </label>
+          <label className={field}>
+            <span className="font-medium">Security</span>
+            <select className="input" value={f.smtpSecurity} onChange={(e) => set("smtpSecurity", e.target.value as typeof f.smtpSecurity)}>
+              <option value="auto">Auto (by port)</option><option value="ssl">SSL/TLS (465)</option><option value="starttls">STARTTLS (587)</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={field}>
+            <span className="font-medium">Username</span>
+            <input className="input" value={f.smtpUser} placeholder="you@company.com" autoComplete="off" onChange={(e) => set("smtpUser", e.target.value)} />
+          </label>
+          <div className={field}>
+            <span className="font-medium">Password</span>
+            <span className="muted ml-2">{smtp.passSet ? "saved" : "not set"}</span>
+            <div className="flex items-center gap-3">
+              <input className="input" type="password" autoComplete="new-password" disabled={clearSmtpPass} value={smtpPass}
+                placeholder={smtp.passSet ? "Enter a new password to replace" : "Password or app password"} onChange={(e) => setSmtpPass(e.target.value)} />
+              {smtp.passSet && (
+                <label className="flex items-center gap-1 whitespace-nowrap">
+                  <input type="checkbox" checked={clearSmtpPass} onChange={(e) => setClearSmtpPass(e.target.checked)} /> Remove
+                </label>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={field}>
+            <span className="font-medium">From address</span>
+            <input className="input" type="email" value={f.smtpFromEmail} placeholder="you@company.com" onChange={(e) => set("smtpFromEmail", e.target.value)} />
+          </label>
+          <label className={field}>
+            <span className="font-medium">From name</span>
+            <input className="input" value={f.smtpFromName} placeholder="Peter Tran" onChange={(e) => set("smtpFromName", e.target.value)} />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <input className="input max-w-64" type="email" value={testTo} placeholder={`Send test to… (default: ${smtp.fromEmail || "From address"})`} onChange={(e) => setTestTo(e.target.value)} />
+          <button type="button" className="btn" disabled={testing || !smtp.ready} onClick={sendTest}>{testing ? "Sending…" : "Send test email"}</button>
+          {testMsg && <span className={testMsg.ok ? "text-green-600" : "text-red-600"}>{testMsg.text}</span>}
+        </div>
+        <p className="muted">Save first: the test uses the saved settings.</p>
       </fieldset>
 
       <div className="flex items-center gap-3">

@@ -8,6 +8,7 @@ import type { Segment } from "@/lib/stt";
 import { MeetingActions } from "@/components/meeting-actions";
 import { Chat } from "@/components/chat";
 import { RenameTitle } from "@/components/rename-title";
+import { getSmtpConfig } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   const m = await prisma.meeting.findFirst({ where: { id: (await params).id, userId: user.id } });
   if (!m) notFound();
   const summary = m.summary as unknown as MeetingSummary | null;
+  const smtpReady = !!(await getSmtpConfig(user.id));
   const transcript = (m.transcript as unknown as Segment[] | null) ?? [];
   const hasTranscript = !!m.transcriptText?.trim();
   const stageInput = { status: m.status, failedStage: m.failedStage, hasTranscript };
@@ -36,7 +38,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         </section>
       )}
       <MeetingActions id={m.id} status={m.status} failedStage={m.failedStage} progress={m.progress}
-        hasAudio={!!m.audioPath} hasTranscript={hasTranscript} hasSummary={!!summary} />
+        hasAudio={!!m.audioPath} hasTranscript={hasTranscript} hasSummary={!!summary} smtpReady={smtpReady} />
 
       {summary ? (
         <>

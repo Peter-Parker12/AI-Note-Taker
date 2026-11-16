@@ -121,5 +121,13 @@ model UserSettings {
   anthropicKeyEnc String?
   openaiKeyEnc    String?
   deepgramKeyEnc  String?
+  // Outgoing email (SMTP) for "Email recap". The password is encrypted like the API keys.
+  smtpHost        String?
+  smtpPort        Int?
+  smtpSecurity    String?                   // auto | ssl | starttls (null = auto: SSL on 465, otherwise STARTTLS when offered)
+  smtpUser        String?
+  smtpPassEnc     String?
+  smtpFromEmail   String?
+  smtpFromName    String?
   updatedAt       DateTime @updatedAt
 }

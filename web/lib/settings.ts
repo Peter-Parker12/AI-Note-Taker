@@ -48,6 +48,12 @@ export async function getSettingsView(userId: string) {
     },
     keys: Object.fromEntries(Object.entries(keys).map(([k, v]) => [k, { set: !!v, last4: last4(v) }])) as
       Record<"anthropic" | "openai" | "deepgram", { set: boolean; last4: string | null }>,
+    smtp: {
+      host: r?.smtpHost ?? "", port: r?.smtpPort ?? null, security: (r?.smtpSecurity ?? "auto") as "auto" | "ssl" | "starttls",
+      user: r?.smtpUser ?? "", fromEmail: r?.smtpFromEmail ?? "", fromName: r?.smtpFromName ?? "",
+      passSet: !!decrypt(r?.smtpPassEnc),
+      ready: !!(r?.smtpHost && r?.smtpFromEmail),
+    },
     defaults: {
       sttProvider: STT_PROVIDER, sttLanguage: STT_LANGUAGE, claudeModel: CLAUDE_MODEL,
       serverKeys: {

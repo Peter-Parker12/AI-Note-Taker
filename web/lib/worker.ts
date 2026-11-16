@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import fs from "fs/promises";
 import path from "path";
 import { runSummarize, runTranscribe } from "@/lib/pipeline";
-import { DATA_DIR } from "@/lib/env";
+import { DATA_DIR, PROCESSING_MODE, REMOTE_STALE_MIN } from "@/lib/env";
 
 const POLL_MS = 3000;
 let started = false;
@@ -80,6 +80,24 @@ async function sweepStaleRecordings() {
 }
 
 /**
+ * Remote mode: jobs claimed by the local worker that went silent (laptop closed, crash). Fail them so the
+ * recording shows an error with Re-transcribe / Re-recap instead of spinning forever.
+ */
+async function sweepStaleRemoteJobs() {
+  const stale = await prisma.job.findMany({
+    where: { status: "RUNNING", updatedAt: { lt: new Date(Date.now() - REMOTE_STALE_MIN * 60_000) } },
+    select: { id: true, type: true, meetingId: true },
+  });
+  for (const j of stale) {
+    const { count } = await prisma.job.updateMany({ where: { id: j.id, status: "RUNNING" }, data: { status: "FAILED", lastError: "Local worker stopped responding" } });
+    if (count) {
+      await failJob(j, "The local worker stopped responding. Start it again, then re-run this step.");
+      console.log(`[worker] failed stale remote ${j.type} job for ${j.meetingId}`);
+    }
+  }
+}
+
+/**
  * Leftover scratch folders (a crash or restart in the middle of a job skips the normal cleanup).
  * Run at startup, when no job can be using one; the next run recreates what it needs.
  */
@@ -97,13 +115,19 @@ async function removeOrphanedWorkDirs() {
 export function startWorker() {
   if (started) return;
   started = true;
-  // Jobs left RUNNING by a crashed/restarted container go back in the queue.
-  prisma.job.updateMany({ where: { status: "RUNNING" }, data: { status: "PENDING" } }).catch(() => {});
+  const remote = PROCESSING_MODE === "remote";
+  // Jobs left RUNNING by a crashed/restarted container go back in the queue. In remote mode they belong
+  // to the local worker, which may still be running, so they are left alone (the stale sweeper covers them).
+  if (!remote) prisma.job.updateMany({ where: { status: "RUNNING" }, data: { status: "PENDING" } }).catch(() => {});
   let lastSweep = 0;
   const loop = async () => {
     try {
-      if (Date.now() - lastSweep > SWEEP_EVERY_MS) { lastSweep = Date.now(); await sweepStaleRecordings(); }
-      while (await tick()) { /* drain */ }
+      if (Date.now() - lastSweep > SWEEP_EVERY_MS) {
+        lastSweep = Date.now();
+        await sweepStaleRecordings();
+        if (remote) await sweepStaleRemoteJobs();
+      }
+      if (!remote) while (await tick()) { /* drain */ }
     } catch (e) {
       console.error("[worker] tick error", e);
     }
@@ -111,5 +135,5 @@ export function startWorker() {
   };
   // Clear leftovers first, so cleanup can never race a job that has just started.
   removeOrphanedWorkDirs().catch((e) => console.error("[worker] cleanup failed", e)).finally(loop);
-  console.log("[worker] started");
+  console.log(`[worker] started (${PROCESSING_MODE} processing)`);
 }
